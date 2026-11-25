@@ -5,6 +5,7 @@ show_help() {
 Usage: php-dev <command> [arguments]
 
   menu                          Open the interactive menu
+  install                       Configure php-dev in Zsh
 
 Stack commands
   status                        Show stack, ports, DNS, PHP and Composer
@@ -40,7 +41,7 @@ repo_root=${0:A:h:h}
 subcommand=$1
 case $subcommand in
   help|-h|--help) show_help; exit 0 ;;
-  menu|status|herd|flock|toggle|mysql|php|composer|artisan|serve|tinker|test|dev) shift ;;
+  menu|install|status|herd|flock|toggle|mysql|php|composer|artisan|serve|tinker|test|dev) shift ;;
   *) usage_error "unknown command '$subcommand'" ;;
 esac
 
@@ -51,6 +52,10 @@ case $subcommand in
     (( $# == 0 )) || usage_error "'menu' takes no arguments"
     [[ -t 0 && -t 1 && ${TERM:-dumb} != dumb ]] || usage_error 'menu needs an interactive terminal'
     exec php "$repo_root/src/menu.php"
+    ;;
+  install)
+    (( $# == 0 )) || usage_error "'install' takes no arguments"
+    exec php "$repo_root/src/install-zsh.php"
     ;;
   status|herd|flock|toggle)
     (( $# == 0 )) || usage_error "'$subcommand' takes no arguments"
