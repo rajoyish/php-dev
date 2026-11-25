@@ -235,7 +235,13 @@ _de_dot() {
 }
 
 # _de_row <icon> <label> <state> <value> [hint]
+# Row spacing: a blank line between the rows of a group, none before the first.
+# Call _de_group after a heading; row helpers call _de_gap.
+_de_group() { typeset -gi _DE_GAP=0; }
+_de_gap()   { (( ${_DE_GAP:-0} )) && print; typeset -gi _DE_GAP=1; }
+
 _de_row() {
+  _de_gap
   local hint=
   [[ -n $5 ]] && hint="  %F{8}$5%f"
   _de_p "  $1${(r:10:)2}$(_de_dot $3)$4$hint"
@@ -349,6 +355,7 @@ _de_print_issues() {
   for (( i = 1; i <= $#_de_issues; i++ )); do
     fix=$(_de_fix_text "$_de_fixes[i]")
     [[ -n $fix ]] && fix="  %F{8}→ $(_de_q "$fix")%f"
+    _de_gap
     _de_p "  $_DE_I[dot_warn]$(_de_q "$_de_issues[i]")$fix"
   done
 }
@@ -360,6 +367,7 @@ devenv-status() {
   local name value hint
   _de_p "$_DE_I[switch]%BActive stack:%b ${${(C)_de_active}:-none set}"
   print
+  _de_group
   for name in $_de_checks; do
     value=$_de_value[$name] hint=$_de_hint[$name]
     if [[ $name == php ]]; then hint=$(_de_q "$hint"); else value=$(_de_q "$value"); fi
@@ -369,12 +377,14 @@ devenv-status() {
 
   if (( $#_de_issues )); then
     print
+    _de_group
     _de_print_issues
   fi
 }
 
 # Kept from the old MySQL switcher: report who owns :3306
 mysql-status() {
+  _de_group
   local owner=$(_de_port_owner 3306)
   _de_row "$_DE_I[mysql]" mysql "$(_de_owned "$owner" "${owner%% *}")" "$(_de_q "$owner")" ':3306'
 }

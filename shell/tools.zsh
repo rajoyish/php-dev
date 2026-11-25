@@ -9,6 +9,7 @@ typeset -g _DE_HERD_LOGS="$HOME/Library/Application Support/Herd/Log"
 
 # _de_check <state> <label> [detail]
 _de_check() {
+  _de_gap
   local detail=
   [[ -n $3 ]] && detail="  %F{8}$(_de_q "$3")%f"
   _de_p "  $(_de_dot $1)$2$detail"
@@ -32,6 +33,8 @@ devenv-doctor() {
   _de_p "$_DE_I[doctor]%Bphp-dev doctor%b"
   print
   _de_p "$_DE_I[apps]%BApps%b"
+  print
+  _de_group
   if [[ -d $_DE_HERD_APP && -x $_DE_HERD_CLI ]]; then _de_check ok 'Laravel Herd' "$_DE_HERD_APP"
   else _de_check off 'Laravel Herd is not installed' 'needed only for the Herd stack'; fi
   if [[ -d $_DE_FLOCK_APP && -x $_DE_FLOCK_CLI ]]; then _de_check ok 'Flock' "$_DE_FLOCK_APP"
@@ -45,6 +48,8 @@ devenv-doctor() {
 
   print
   _de_p "$_DE_I[setup]%BSetup%b"
+  print
+  _de_group
   local zshrc=$(_de_zshrc) setup_issues=0
   if grep -qF '# >>> php-dev >>>' "$zshrc" 2>/dev/null; then _de_check ok 'Zsh is configured' "$zshrc"
   else _de_check warn 'Zsh is not configured' 'run: php-dev install'; (( setup_issues++ )); fi
@@ -60,6 +65,8 @@ devenv-doctor() {
 
   print
   _de_p "$_DE_I[stack]%BStack%b"
+  print
+  _de_group
   _de_collect
   local name
   for name in $_de_checks; do
@@ -120,11 +127,15 @@ devenv-sites() {
   local here=$(_de_site_for $PWD) dir name mark
   local -a dirs=("$DEVENV_SITES"/*(/N))
   _de_p "$_DE_I[folder]%BSites in $(_de_q "$DEVENV_SITES")%b  %F{8}($#dirs)%f"
+  print
+  _de_group
   for dir in $dirs; do
+    _de_gap
     name=${(L)dir:t}
     [[ $name == $here ]] && mark='  %F{green}← here%f' || mark=
     _de_p "  $(_de_site_icon $dir)${(r:28:)name} %F{cyan}$(_de_q "http://$name.test")%f$mark"
   done
+  print
   _de_p "  $_DE_I[laravel]%F{8}Laravel%f  $_DE_I[package]%F{8}PHP%f  $_DE_I[node]%F{8}Node%f  $_DE_I[dir]%F{8}other%f"
 }
 
@@ -175,7 +186,9 @@ devenv-logs() {
   local -a names=($(_de_log_names))
   if [[ -z $name ]]; then
     _de_p "$_DE_I[logs]%BLogs for ${(C)$(<"$DEVENV_STATE" 2>/dev/null)}%b"
-    print -rl -- "  "${^names}
+    print
+    print -r -- "  "${(pj:\n\n  :)names}
+    print
     _de_p "%F{8}Show one with: php-dev logs <name> [-f]%f"
     return
   fi

@@ -3,7 +3,6 @@
 declare(strict_types=1);
 
 use function Laravel\Prompts\confirm;
-use function Laravel\Prompts\select;
 use function Laravel\Prompts\text;
 
 $root = dirname(__DIR__);
@@ -16,8 +15,20 @@ if (!is_file($autoload)) {
 
 require $autoload;
 require __DIR__ . '/icons.php';
+require __DIR__ . '/MenuPrompt.php';
 
 $i = static fn (string $name): string => Icons::get($name);
+
+/**
+ * A spaced select with a short description under each option, like the main menu.
+ *
+ * @param  array<int|string, string>  $options
+ * @param  array<int|string, string>  $descriptions
+ */
+function choose(string $label, array $options, array $descriptions = [], int|string|null $default = null): int|string
+{
+    return (new MenuPrompt($label, $options, $descriptions, $default))->prompt();
+}
 
 /** Run php-dev with the terminal attached and return its exit code. Sets \$interrupted on Ctrl+C. */
 function run(string $root, array $arguments, bool &$interrupted = false): int
@@ -152,12 +163,25 @@ while (true) {
     $options['icons'] = $i('settings') . 'CLI settings: change the icon style';
     $options['exit'] = $i('exit') . 'Exit';
 
-    $action = select(
-        $title,
-        $options,
-        default: $issues > 0 ? 'doctor' : null,
-        scroll: count($options),
-    );
+    $sitesDir = str_replace((string) getenv('HOME'), '~', getenv('DEVENV_SITES') ?: '/Volumes/Sites');
+    $descriptions = [
+        'open' => "Open this project's .test site in your default browser",
+        'test' => 'Run php artisan test, with an optional filter',
+        'tinker' => 'Start an interactive Laravel REPL for this project',
+        'dev' => "Run this project's composer dev script (Ctrl+C stops it)",
+        'db' => $isLaravel ? 'Connect with the database credentials from .env' : 'Connect to the MySQL server on port 3306',
+        'serve' => 'Run php artisan serve on a port you choose',
+        'status' => 'Check which stack owns the ports, DNS, PHP and Composer',
+        'doctor' => 'Find problems with the apps, Zsh setup and stack, and offer fixes',
+        'stack' => 'Swap between Laravel Herd and Flock (restarts local services)',
+        'mysql' => 'Check or switch between DBngin MySQL and Flock MySQL',
+        'sites' => "List the projects in $sitesDir with their .test URLs",
+        'logs' => "Read or follow the active stack's service logs",
+        'icons' => "Choose Nerd Font or emoji icons for php-dev's own output",
+        'exit' => 'Close the menu and return to the shell',
+    ];
+
+    $action = (new MenuPrompt($title, $options, $descriptions, default: $issues > 0 ? 'doctor' : null))->prompt();
 
     $arguments = [$action];
 
@@ -166,10 +190,14 @@ while (true) {
             exit(0);
 
         case 'stack':
-            $target = select('Switch to which PHP stack?', [
+            $target = choose('Switch to which PHP stack?', [
                 'herd' => $i('herd') . 'Laravel Herd + DBngin MySQL' . ($stack === 'herd' ? ' (active)' : ''),
                 'flock' => $i('flock') . 'Flock + Flock MySQL' . ($stack === 'flock' ? ' (active)' : ''),
                 'back' => $back(),
+            ], [
+                'herd' => 'Herd serves the sites with nginx and dnsmasq; DBngin runs MySQL',
+                'flock' => 'Flock serves the sites and runs MySQL, mail and dumps',
+                'back' => 'Return without switching',
             ], default: $stack === 'herd' ? 'flock' : 'herd');
 
             if ($target === 'back' || !confirm('Switch stacks? This restarts local services.', default: false)) {
@@ -180,11 +208,16 @@ while (true) {
             break;
 
         case 'mysql':
-            $mysql = select('MySQL action', [
+            $mysql = choose('MySQL action', [
                 'status' => $i('status') . 'Show MySQL status',
                 'dbngin' => $i('switch') . 'Switch to DBngin MySQL',
                 'flock' => $i('switch') . 'Switch to Flock MySQL',
                 'back' => $back(),
+            ], [
+                'status' => 'See which service owns port 3306',
+                'dbngin' => 'Stop Flock MySQL and start the DBngin instance',
+                'flock' => 'Stop DBngin and start Flock MySQL',
+                'back' => 'Return without changing MySQL',
             ]);
 
             if ($mysql === 'back'
@@ -215,11 +248,15 @@ while (true) {
             ));
             $current = Icons::style();
 
-            $style = select('CLI settings: icon style', [
+            $style = choose('CLI settings: icon style', [
                 'nerd' => 'Nerd Font ' . $preview('nerd') . ($current === 'nerd' ? ' (current)' : ' (default)'),
                 'emoji' => 'Emoji     ' . $preview('emoji') . ($current === 'emoji' ? ' (current)' : ''),
                 'back' => $back(),
-            ], default: $current, hint: 'Nerd Font icons show as boxes unless your terminal uses a Nerd Font.');
+            ], [
+                'nerd' => 'Logos and symbols; they show as boxes without a Nerd Font',
+                'emoji' => 'Works in any terminal',
+                'back' => 'Keep the current style',
+            ], default: $current);
 
             if ($style === 'back') {
                 continue 2;
@@ -236,7 +273,7 @@ while (true) {
                 continue 2;
             }
 
-            $log = select('Which log?', [...array_combine($names, $names), "\0back" => $back()], scroll: 10);
+            $log = choose('Which log?', [...array_combine($names, $names), "\0back" => $back()]);
 
             if ($log === "\0back") {
                 continue 2;
@@ -281,13 +318,16 @@ while (true) {
     $code = $arguments === null ? 0 : run($root, $arguments, $interrupted);
     echo "\n";
 
-    $next = select(match (true) {
+    $next = choose(match (true) {
         $interrupted => 'Stopped. What next?',
         $code === 0 => 'Done. What next?',
         default => "The command exited with code $code. What next?",
     }, [
         'menu' => $back(),
         'exit' => $i('exit') . 'Exit',
+    ], [
+        'menu' => 'Pick another command',
+        'exit' => 'Close the menu and return to the shell',
     ]);
 
     if ($next === 'exit') {
