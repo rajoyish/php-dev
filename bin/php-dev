@@ -4,6 +4,8 @@ show_help() {
   cat <<'EOF'
 Usage: php-dev <command> [arguments]
 
+  menu                          Open the interactive menu
+
 Stack commands
   status                        Show stack, ports, DNS, PHP and Composer
   herd | flock | toggle         Switch the web, DNS and MySQL stack
@@ -17,7 +19,7 @@ Project commands
   serve | tinker | test [args]   Run the corresponding Artisan command
   dev [args]                    Run composer run dev
 
-Run php-dev with no arguments to show this help.
+Run php-dev with no arguments to open the menu in an interactive terminal.
 EOF
 }
 
@@ -26,16 +28,30 @@ usage_error() {
   exit 2
 }
 
-subcommand=${1:-help}
+if (( $# == 0 )); then
+  if [[ -t 0 && -t 1 && ${TERM:-dumb} != dumb ]]; then
+    set -- menu
+  else
+    set -- help
+  fi
+fi
+
+repo_root=${0:A:h:h}
+subcommand=$1
 case $subcommand in
   help|-h|--help) show_help; exit 0 ;;
-  status|herd|flock|toggle|mysql|php|composer|artisan|serve|tinker|test|dev) shift ;;
+  menu|status|herd|flock|toggle|mysql|php|composer|artisan|serve|tinker|test|dev) shift ;;
   *) usage_error "unknown command '$subcommand'" ;;
 esac
 
-source "${0:A:h:h}/shell/devenv.zsh" || exit 1
+source "$repo_root/shell/devenv.zsh" || exit 1
 
 case $subcommand in
+  menu)
+    (( $# == 0 )) || usage_error "'menu' takes no arguments"
+    [[ -t 0 && -t 1 && ${TERM:-dumb} != dumb ]] || usage_error 'menu needs an interactive terminal'
+    exec php "$repo_root/src/menu.php"
+    ;;
   status|herd|flock|toggle)
     (( $# == 0 )) || usage_error "'$subcommand' takes no arguments"
     devenv "$subcommand"
