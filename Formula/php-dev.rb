@@ -4,20 +4,20 @@ class PhpDev < Formula
   url "https://github.com/rajoyish/php-dev.git", tag: "v0.1.0"
   version "0.1.0"
 
-  depends_on :macos
   depends_on "composer"
+  depends_on :macos
   depends_on "php"
 
   def install
     ENV["COMPOSER_HOME"] = (buildpath/".composer").to_s
-    system Formula["composer"].opt_bin/"composer", "install", "--no-dev", "--prefer-dist", "--no-interaction",
+    system formula_opt_bin("composer")/"composer", "install", "--no-dev", "--prefer-dist", "--no-interaction",
            "--no-progress", "--no-plugins", "--no-scripts"
 
     libexec.install "bin", "shell", "src", "vendor"
     zsh_completion.install_symlink libexec/"shell/completions/_php-dev"
     (bin/"php-dev").write_env_script libexec/"bin/php-dev",
                                      PHP_DEV_BREW_PREFIX: opt_prefix,
-                                     PHP_DEV_RUNTIME_PHP: Formula["php"].opt_bin/"php"
+                                     PHP_DEV_RUNTIME_PHP: formula_opt_bin("php")/"php"
     bin.install_symlink "php-dev" => "phpd"
   end
 
@@ -32,7 +32,7 @@ class PhpDev < Formula
   test do
     assert_match "Open the interactive menu", shell_output("#{bin}/php-dev --help")
     assert_match "Open the interactive menu", shell_output("#{bin}/phpd --help")
-    php = Formula["php"].opt_bin/"php"
+    php = formula_opt_bin("php")/"php"
     system php, "-r", %q(require $argv[1]; exit(class_exists(Laravel\Prompts\Prompt::class) ? 0 : 1);),
            libexec/"vendor/autoload.php"
 
