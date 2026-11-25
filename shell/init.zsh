@@ -9,5 +9,13 @@
   done
 
   path=("$cli_bin" "${remaining_path[@]}")
+
+  # Tab completion: picked up by a later compinit, or registered now if compinit already ran.
+  fpath=("$root/shell/completions" "${fpath[@]}")
+  if (( $+functions[compdef] )); then
+    autoload -Uz _php-dev
+    compdef _php-dev php-dev phpd
+  fi
+
   source "$root/shell/devenv.zsh"
 } "${1:-}"

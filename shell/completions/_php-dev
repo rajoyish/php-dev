@@ -1,0 +1,58 @@
+#compdef php-dev phpd
+
+local -a commands=(
+  'menu:Open the interactive menu'
+  'install:Configure php-dev in Zsh'
+  'status:Show stack, ports, DNS, PHP and Composer'
+  'doctor:Check apps, setup and stack health'
+  'herd:Switch to Laravel Herd and DBngin MySQL'
+  'flock:Switch to Flock and Flock MySQL'
+  'toggle:Switch to the stack that is not active'
+  'mysql:Inspect or switch MySQL'
+  'icons:Show or save the icon style'
+  'logs:Show the active stack'"'"'s service logs'
+  'sites:List the parked sites'
+  'open:Open a site in the browser'
+  'db:Open a MySQL shell'
+  'php:Run PHP from the selected stack'
+  'composer:Run Composer from the selected stack'
+  'artisan:Run Artisan in this project'
+  'serve:Run artisan serve'
+  'tinker:Run artisan tinker'
+  'test:Run artisan test'
+  'dev:Run composer run dev'
+  'help:Show usage'
+)
+
+if (( CURRENT == 2 )); then
+  _describe -t commands 'php-dev command' commands
+  return
+fi
+
+local sites=${DEVENV_SITES:-/Volumes/Sites}
+local state=${DEVENV_STATE:-$HOME/.config/devenv/active}
+
+case $words[2] in
+  status) _arguments '2: :(--json)' ;;
+  doctor) _arguments '2: :(--fix)' ;;
+  icons)  _arguments '2:style:(emoji nerd)' ;;
+  mysql)  _arguments '2:action:(status dbngin flock toggle)' ;;
+  open)
+    local -a names=($sites/*(/N:t))
+    _arguments "2:site:(${(L)names})"
+    ;;
+  logs)
+    local -a logs
+    case $(<$state 2>/dev/null) in
+      flock) logs=($HOME/Library/Application\ Support/Flock/log/*.log(N:t:r)) ;;
+      herd)  logs=($HOME/Library/Application\ Support/Herd/Log/*.log(N:t:r)) ;;
+    esac
+    _arguments '(-f --follow)'{-f,--follow}'[keep printing new lines]' \
+               '(-n --lines)'{-n,--lines}'[number of lines]:lines' \
+               "2:log:(${logs})"
+    ;;
+  artisan)
+    [[ -f artisan ]] && _arguments "2:artisan command:(${(f)$(php artisan list --raw 2>/dev/null | cut -d' ' -f1)})"
+    ;;
+  php|composer) _files ;;
+esac

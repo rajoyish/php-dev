@@ -30,25 +30,33 @@ typeset -g _DE_FLOCK_API="http://127.0.0.1:53531"
 typeset -g _DE_DBNGIN_DIR="$HOME/Library/Application Support/com.tinyapp.DBngin/Engines/mysql"
 typeset -g _DE_RESOLVER="/etc/resolver/test"
 
+source "${${(%):-%x}:A:h}/icons.zsh"
+
 # ── small helpers ────────────────────────────────────────────────────────────
 
-_de_say()  { print -P "%F{cyan}›%f $*"; }
-_de_ok()   { print -P "%F{green}✓%f $*"; }
-_de_warn() { print -P "%F{yellow}!%f $*"; }
-_de_err()  { print -P "%F{red}✗%f $*" >&2; }
+_de_say()  { _de_p "$_DE_I[wait]$(_de_q "$*")"; }
+_de_ok()   { _de_p "$_DE_I[ok]$(_de_q "$*")"; }
+_de_warn() { _de_p "$_DE_I[warn]$(_de_q "$*")"; }
+_de_err()  { _de_p "$_DE_I[err]$(_de_q "$*")" >&2; }
 
 # PID listening on a TCP port (empty if none)
 _de_port_pid() { lsof -nP -iTCP:"$1" -sTCP:LISTEN -t 2>/dev/null | head -n 1; }
 
 # _de_wait_port <port> <up|down> [seconds]
+# Shows a spinner in a terminal while it waits.
 _de_wait_port() {
-  local port=$1 want=$2 i
+  local port=$1 want=$2 i spin=0
+  local -a frames=(⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏)
+  [[ -t 1 ]] && spin=1
   for (( i = 0; i < ${3:-20} * 4; i++ )); do
-    if [[ $want == up ]]; then [[ -n $(_de_port_pid $port) ]] && return 0
-    else                       [[ -z $(_de_port_pid $port) ]] && return 0
+    if [[ $want == up && -n $(_de_port_pid $port) ]] || [[ $want == down && -z $(_de_port_pid $port) ]]; then
+      (( spin && i )) && print -n '\r\e[K'
+      return 0
     fi
+    (( spin )) && print -n "\r   ${frames[i % 10 + 1]} waiting for :$port to come $want ($(( i / 4 ))s)"
     sleep 0.25
   done
+  (( spin )) && print -n '\r\e[K'
   return 1
 }
 
@@ -106,6 +114,7 @@ _devenv_apply_path() {
 
 # Other open terminals follow a switch at their next prompt.
 _devenv_precmd() {
+  [[ $(_de_icon_style) == $_DE_ICON_STYLE ]] || _de_load_icons
   local active=$(<"$DEVENV_STATE" 2>/dev/null)
   [[ -n $active && $active != $_DEVENV_APPLIED ]] && _devenv_apply_path "$active"
 }
@@ -161,7 +170,9 @@ _de_start_flock() {
 }
 
 _de_start_herd() {
-  _de_say "Starting DBngin MySQL…"
+  # Launch Herd first: the app takes longest, so it boots while MySQL starts.
+  _de_say "Starting Herd and DBngin MySQL…"
+  open -g "$_DE_HERD_APP"
   local plist=$(_de_dbngin_plist)
   if [[ -z $plist ]]; then
     _de_warn "DBngin MySQL plist not found in $_DE_DBNGIN_DIR"
@@ -170,8 +181,6 @@ _de_start_herd() {
     _de_wait_port 3306 up 20 && _de_ok "DBngin MySQL on :3306" || _de_warn "DBngin MySQL didn't start"
   fi
 
-  _de_say "Starting Herd…"
-  open -g "$_DE_HERD_APP"
   _de_wait_port 2304 up 40 || { _de_err "Herd app didn't come up"; return 1; }
   "$_DE_HERD_CLI" start >/dev/null 2>&1
   _de_wait_port 80 up 20 || _de_warn "Herd nginx isn't listening on :80 yet"
@@ -210,13 +219,18 @@ _de_p() {
 # Escape a value for print -P and shorten $HOME to ~.
 _de_q() { local v=${1/#$HOME/\~}; print -r -- "${v//\%/%%}"; }
 
+# JSON string literal
+_de_json() {
+  local s=$1
+  s=${s//\\/\\\\}; s=${s//\"/\\\"}; s=${s//$'\t'/\\t}; s=${s//$'\n'/\\n}
+  print -rn -- "\"$s\""
+}
+
 # _de_dot <ok|warn|off|bad>
 _de_dot() {
   case $1 in
-    ok)   print -r -- '%F{green}●%f' ;;
-    warn) print -r -- '%F{yellow}●%f' ;;
-    bad)  print -r -- '%F{red}✗%f' ;;
-    *)    print -r -- '%F{8}○%f' ;;
+    ok|warn|bad) print -rn -- "$_DE_I[dot_$1]" ;;
+    *)           print -rn -- "$_DE_I[dot_off]" ;;
   esac
 }
 
@@ -224,67 +238,145 @@ _de_dot() {
 _de_row() {
   local hint=
   [[ -n $5 ]] && hint="  %F{8}$5%f"
-  _de_p "  %F{cyan}$1%f  ${(r:10:)2}$(_de_dot $3) $4$hint"
+  _de_p "  $1${(r:10:)2}$(_de_dot $3)$4$hint"
 }
 
 # State of something that should belong to <expected>: ok, warn (someone else) or off (free)
 _de_owned() {
   case $1 in
-    free)   print off ;;
-    $2*)    print ok ;;
-    *)      print warn ;;
+    free|none) print off ;;
+    $2*)       print ok ;;
+    *)         print warn ;;
   esac
 }
 
-devenv-status() {
-  local active=$(<"$DEVENV_STATE" 2>/dev/null)
-  local stack=${(C)active} db bin
-  case $active in
+
+# Gathers the stack's health into globals:
+#   _de_active, _de_checks (ordered names), _de_state/_de_value/_de_hint (per check),
+#   _de_issues (messages) and _de_fixes (php-dev arguments that repair each issue).
+_de_collect() {
+  typeset -g _de_active=$(<"$DEVENV_STATE" 2>/dev/null)
+  typeset -ga _de_checks=(web mail mysql dns php composer sites) _de_issues=() _de_fixes=()
+  typeset -gA _de_state=() _de_value=() _de_hint=()
+  local stack=${(C)_de_active} db bin name port v
+  case $_de_active in
     herd)  db=DBngin; bin=$_DE_HERD_BIN ;;
     flock) db=Flock;  bin=$_DE_FLOCK_BIN ;;
+    *)     _de_issues+=("No stack is selected"); _de_fixes+=('') ;;
   esac
 
-  local web=$(_de_port_owner 80) mail=$(_de_port_owner 2525) mysql=$(_de_port_owner 3306)
-  local dns=none
-  [[ -f $_DE_RESOLVER ]] && { grep -q '^port 53535' $_DE_RESOLVER && dns=Flock || dns=Herd; }
-  local php=$(whence -p php) composer=$(whence -p composer)
-  local ver=$(php -r 'echo PHP_VERSION;' 2>/dev/null)
-  local -a fixes
+  for name port in web 80 mail 2525 mysql 3306; do
+    v=$(_de_port_owner $port)
+    _de_value[$name]=$v; _de_hint[$name]=":$port"
+    if [[ $name == mysql ]]; then _de_state[$name]=$(_de_owned "$v" "$db")
+    else                          _de_state[$name]=$(_de_owned "$v" "$stack"); fi
+  done
+  # Mail is optional (Herd's mail needs Herd Pro); only a foreign owner is a problem.
+  [[ $_de_state[mail] == off ]] && _de_state[mail]=ok _de_value[mail]='not running'
 
-  _de_p "%B⇄  Active stack:%b ${stack:-none set}"
+  v=none
+  [[ -f $_DE_RESOLVER ]] && { grep -q '^port 53535' $_DE_RESOLVER && v=Flock || v=Herd; }
+  _de_value[dns]=$v; _de_hint[dns]=$_DE_RESOLVER
+  _de_state[dns]=$(_de_owned "$v" "$stack")
 
-  local s
-  s=$(_de_owned "$web" "$stack");   _de_row '◎' web   $s "$(_de_q "$web")"   ':80'
-  [[ $s == ok ]] || fixes+=("web on :80 isn't served by ${stack:-a stack} — run php-dev ${active:-toggle}")
-  s=$(_de_owned "$mail" "$stack");  _de_row '✉' mail  $s "$(_de_q "$mail")"  ':2525'
-  s=$(_de_owned "$mysql" "$db");    _de_row '▤' mysql $s "$(_de_q "$mysql")" ':3306'
-  [[ $s == ok || -z $active ]] || fixes+=("MySQL on :3306 isn't $db — run php-dev mysql ${active/herd/dbngin}")
-  s=$(_de_owned "$dns" "$stack");   _de_row '⌖' dns   $s "$dns" "$(_de_q "$_DE_RESOLVER")"
-  [[ $s == ok ]] || fixes+=(".test DNS points at $dns — run php-dev ${active:-toggle} to fix")
+  v=$(whence -p php)
+  _de_value[php]=$(php -r 'echo PHP_VERSION;' 2>/dev/null); _de_hint[php]=$v
+  [[ -n $bin && ${v:h} == $bin ]] && _de_state[php]=ok || _de_state[php]=warn
+  [[ -z $v ]] && _de_state[php]=bad _de_value[php]='not found'
 
-  [[ -n $bin && ${php:h} == $bin ]] && s=ok || s=warn
-  [[ -z $php ]] && s=bad
-  _de_row '◆' php      $s "${ver:-not found}" "$(_de_q "$php")"
-  [[ -n $bin && ${composer:h} == $bin ]] && s=ok || s=warn
-  [[ -z $composer ]] && s=bad
-  _de_row '◈' composer $s "$(_de_q "${composer:-not found}")"
+  v=$(whence -p composer)
+  _de_value[composer]=${v:-not found}
+  [[ -n $bin && ${v:h} == $bin ]] && _de_state[composer]=ok || _de_state[composer]=warn
+  [[ -z $v ]] && _de_state[composer]=bad
 
-  if [[ -d $DEVENV_SITES ]]; then
-    _de_row '⌂' sites ok "$(_de_q "$DEVENV_SITES")"
-  else
-    _de_row '⌂' sites bad "$(_de_q "$DEVENV_SITES")" 'not mounted'
+  _de_value[sites]=$DEVENV_SITES
+  if [[ -d $DEVENV_SITES ]]; then _de_state[sites]=ok
+  else _de_state[sites]=bad _de_hint[sites]='not mounted'; fi
+
+  [[ -z $_de_active ]] && return
+  if [[ $_de_state[web] != ok ]]; then
+    _de_issues+=("Port :80 isn't served by $stack ($_de_value[web])"); _de_fixes+=($_de_active)
   fi
+  # When the web stack is wrong, its mail port is too; one switch fixes both.
+  if [[ $_de_state[mail] != ok && $_de_state[web] == ok ]]; then
+    _de_issues+=("Port :2525 is held by $_de_value[mail]"); _de_fixes+=($_de_active)
+  fi
+  if [[ $_de_state[mysql] != ok ]]; then
+    _de_issues+=("MySQL on :3306 isn't $db ($_de_value[mysql])"); _de_fixes+=("mysql ${_de_active/herd/dbngin}")
+  fi
+  if [[ $_de_state[dns] != ok ]]; then
+    _de_issues+=(".test DNS points at $_de_value[dns], not $stack"); _de_fixes+=($_de_active)
+  fi
+  if [[ $_de_state[php] != ok || $_de_state[composer] != ok ]]; then
+    _de_issues+=("php or composer doesn't come from $stack's bin directory"); _de_fixes+=('path')
+  fi
+  if [[ $_de_state[sites] != ok ]]; then
+    _de_issues+=("$DEVENV_SITES isn't available — mount the drive or set DEVENV_SITES"); _de_fixes+=('')
+  fi
+}
 
-  if (( $#fixes )); then
+# Describe a fix as the command a person would type.
+_de_fix_text() {
+  case $1 in
+    '')   print -r -- '' ;;
+    path) print -r -- 'open a new terminal (or run rehash)' ;;
+    *)    print -r -- "php-dev $1" ;;
+  esac
+}
+
+_de_status_json() {
+  local name i
+  print -n '{"stack":'; _de_json "$_de_active"
+  print -n ",\"healthy\":$( (( $#_de_issues )) && print -n false || print -n true),\"checks\":{"
+  for name in $_de_checks; do
+    [[ $name == $_de_checks[1] ]] || print -n ,
+    _de_json $name; print -n ':{"state":'; _de_json "$_de_state[$name]"
+    print -n ',"value":'; _de_json "$_de_value[$name]"
+    print -n ',"detail":'; _de_json "$_de_hint[$name]"; print -n '}'
+  done
+  print -n '},"issues":['
+  for (( i = 1; i <= $#_de_issues; i++ )); do
+    (( i > 1 )) && print -n ,
+    print -n '{"message":'; _de_json "$_de_issues[i]"
+    print -n ',"fix":'; _de_json "$(_de_fix_text "$_de_fixes[i]")"; print -n '}'
+  done
+  print ']}'
+}
+
+# _de_print_issues: list issues with the command that fixes each
+_de_print_issues() {
+  local i fix
+  for (( i = 1; i <= $#_de_issues; i++ )); do
+    fix=$(_de_fix_text "$_de_fixes[i]")
+    [[ -n $fix ]] && fix="  %F{8}→ $(_de_q "$fix")%f"
+    _de_p "  $_DE_I[dot_warn]$(_de_q "$_de_issues[i]")$fix"
+  done
+}
+
+devenv-status() {
+  _de_collect
+  if [[ $1 == --json ]]; then _de_status_json; return; fi
+
+  local name value hint
+  _de_p "$_DE_I[switch]%BActive stack:%b ${${(C)_de_active}:-none set}"
+  print
+  for name in $_de_checks; do
+    value=$_de_value[$name] hint=$_de_hint[$name]
+    if [[ $name == php ]]; then hint=$(_de_q "$hint"); else value=$(_de_q "$value"); fi
+    [[ $name == dns ]] && hint=$(_de_q "$hint")
+    _de_row "$_DE_I[$name]" $name $_de_state[$name] "$value" "$hint"
+  done
+
+  if (( $#_de_issues )); then
     print
-    for s in $fixes; do _de_p "%F{yellow}!%f $(_de_q "$s")"; done
+    _de_print_issues
   fi
 }
 
 # Kept from the old MySQL switcher: report who owns :3306
 mysql-status() {
   local owner=$(_de_port_owner 3306)
-  _de_row '▤' mysql "$(_de_owned "$owner" "${owner%% *}")" "$(_de_q "$owner")" ':3306'
+  _de_row "$_DE_I[mysql]" mysql "$(_de_owned "$owner" "${owner%% *}")" "$(_de_q "$owner")" ':3306'
 }
 
 # ── main command ─────────────────────────────────────────────────────────────
@@ -293,10 +385,11 @@ devenv() {
   local target=$1 current=$(<"$DEVENV_STATE" 2>/dev/null)
 
   case $target in
-    status|"") devenv-status; return ;;
+    status|"") devenv-status "${@:2}"; return ;;
     toggle)    [[ $current == herd ]] && target=flock || target=herd ;;
     herd|flock) ;;
-    *) print "usage: devenv [herd|flock|toggle|status]"; return 1 ;;
+    doctor)    devenv-doctor "${@:2}"; return ;;
+    *) print "usage: devenv [herd|flock|toggle|status|doctor]"; return 1 ;;
   esac
 
   if [[ $target == herd && ( ! -d $_DE_HERD_APP || ! -x $_DE_HERD_CLI ) ]]; then
@@ -309,7 +402,7 @@ devenv() {
 
   [[ -d $DEVENV_SITES ]] || _de_warn "$DEVENV_SITES isn't available — is the eSSD mounted?"
 
-  print -P "%B⇄ Switching to ${target:u}%b"
+  _de_p "$_DE_I[switch]%BSwitching to ${(C)target}%b"
   if [[ $target == herd ]]; then
     _de_stop_flock || return 1
     _de_start_herd || return 1
@@ -319,7 +412,7 @@ devenv() {
   fi
 
   mkdir -p "${DEVENV_STATE:h}"
-  print -r -- "$target" > "$DEVENV_STATE"
+  print -r -- "$target" >| "$DEVENV_STATE"
   _devenv_apply_path "$target"
   print
   devenv-status
@@ -341,6 +434,8 @@ switch-mysql() {
   esac
   _de_wait_port 3306 up 30; mysql-status
 }
+
+source "${${(%):-%x}:A:h}/tools.zsh"
 
 # ── init ─────────────────────────────────────────────────────────────────────
 

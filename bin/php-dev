@@ -3,15 +3,23 @@
 show_help() {
   cat <<'EOF'
 Usage: php-dev <command> [arguments]
+       phpd <command> [arguments]     (short alias)
 
   menu                          Open the interactive menu
   install                       Configure php-dev in Zsh
 
 Stack commands
-  status                        Show stack, ports, DNS, PHP and Composer
+  status [--json]               Show stack, ports, DNS, PHP and Composer
+  doctor [--fix]                Check apps, setup and stack; --fix repairs the stack
   herd | flock | toggle         Switch the web, DNS and MySQL stack
   mysql [status|dbngin|flock|toggle]
                                 Inspect or switch MySQL independently
+  logs [name] [-f] [-n lines]   List or show the active stack's service logs
+
+Site commands
+  sites                         List the sites in $DEVENV_SITES with their URLs
+  open [site]                   Open a site (default: the current one) in the browser
+  db [database]                 Open a MySQL shell (uses the project's .env)
 
 Project commands
   php [args]                    Run PHP from the selected stack
@@ -19,6 +27,9 @@ Project commands
   artisan [args]                Run Artisan from a Laravel project directory
   serve | tinker | test [args]   Run the corresponding Artisan command
   dev [args]                    Run composer run dev
+
+CLI settings
+  icons [nerd|emoji]            Show or save php-dev's icon style (default: nerd)
 
 Run php-dev with no arguments to open the menu in an interactive terminal.
 EOF
@@ -41,7 +52,7 @@ repo_root=${0:A:h:h}
 subcommand=$1
 case $subcommand in
   help|-h|--help) show_help; exit 0 ;;
-  menu|install|status|herd|flock|toggle|mysql|php|composer|artisan|serve|tinker|test|dev) shift ;;
+  menu|install|status|doctor|herd|flock|toggle|mysql|logs|icons|sites|open|db|php|composer|artisan|serve|tinker|test|dev) shift ;;
   *) usage_error "unknown command '$subcommand'" ;;
 esac
 
@@ -57,9 +68,26 @@ case $subcommand in
     (( $# == 0 )) || usage_error "'install' takes no arguments"
     exec "${PHP_DEV_RUNTIME_PHP:-php}" "$repo_root/src/install-zsh.php"
     ;;
-  status|herd|flock|toggle)
+  status)
+    (( $# == 0 )) || [[ $# == 1 && $1 == --json ]] || usage_error "'status' takes only --json"
+    devenv-status "$@"
+    ;;
+  doctor)
+    (( $# == 0 )) || [[ $# == 1 && $1 == --fix ]] || usage_error "'doctor' takes only --fix"
+    devenv-doctor "$@"
+    ;;
+  herd|flock|toggle|sites)
     (( $# == 0 )) || usage_error "'$subcommand' takes no arguments"
-    devenv "$subcommand"
+    [[ $subcommand == sites ]] && devenv-sites || devenv "$subcommand"
+    ;;
+  open|db)
+    (( $# <= 1 )) || usage_error "'$subcommand' takes at most one argument"
+    devenv-$subcommand "$@"
+    ;;
+  logs) devenv-logs "$@" ;;
+  icons)
+    (( $# <= 1 )) || usage_error "'icons' takes at most one argument"
+    devenv-icons "$@"
     ;;
   mysql)
     (( $# <= 1 )) || usage_error 'mysql takes at most one argument'

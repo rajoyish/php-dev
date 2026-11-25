@@ -14,9 +14,11 @@ class PhpDev < Formula
            "--no-progress", "--no-plugins", "--no-scripts"
 
     libexec.install "bin", "shell", "src", "vendor"
+    zsh_completion.install_symlink libexec/"shell/completions/_php-dev"
     (bin/"php-dev").write_env_script libexec/"bin/php-dev",
                                      PHP_DEV_BREW_PREFIX: opt_prefix,
                                      PHP_DEV_RUNTIME_PHP: Formula["php"].opt_bin/"php"
+    bin.install_symlink "php-dev" => "phpd"
   end
 
   def caveats
@@ -29,6 +31,7 @@ class PhpDev < Formula
 
   test do
     assert_match "Open the interactive menu", shell_output("#{bin}/php-dev --help")
+    assert_match "Open the interactive menu", shell_output("#{bin}/phpd --help")
     php = Formula["php"].opt_bin/"php"
     system php, "-r", %q(require $argv[1]; exit(class_exists(Laravel\Prompts\Prompt::class) ? 0 : 1);),
            libexec/"vendor/autoload.php"
