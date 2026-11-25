@@ -197,21 +197,95 @@ _de_port_owner() {
   esac
 }
 
+# Prompt-style print that drops colour when piped or when NO_COLOR is set.
+_de_p() {
+  setopt localoptions extendedglob
+  local s=$1
+  if [[ ! -t 1 || -n $NO_COLOR ]]; then
+    s=${s//\%[FK]\{[a-z0-9]##\}/}; s=${s//\%[fkBb]/}
+  fi
+  print -P -- "$s"
+}
+
+# Escape a value for print -P and shorten $HOME to ~.
+_de_q() { local v=${1/#$HOME/\~}; print -r -- "${v//\%/%%}"; }
+
+# _de_dot <ok|warn|off|bad>
+_de_dot() {
+  case $1 in
+    ok)   print -r -- '%F{green}●%f' ;;
+    warn) print -r -- '%F{yellow}●%f' ;;
+    bad)  print -r -- '%F{red}✗%f' ;;
+    *)    print -r -- '%F{8}○%f' ;;
+  esac
+}
+
+# _de_row <icon> <label> <state> <value> [hint]
+_de_row() {
+  local hint=
+  [[ -n $5 ]] && hint="  %F{8}$5%f"
+  _de_p "  %F{cyan}$1%f  ${(r:10:)2}$(_de_dot $3) $4$hint"
+}
+
+# State of something that should belong to <expected>: ok, warn (someone else) or off (free)
+_de_owned() {
+  case $1 in
+    free)   print off ;;
+    $2*)    print ok ;;
+    *)      print warn ;;
+  esac
+}
+
 devenv-status() {
   local active=$(<"$DEVENV_STATE" 2>/dev/null)
-  print -P "%BActive stack:%b ${active:-none set}"
-  printf '  %-8s %s\n' web  "$(_de_port_owner 80)" \
-                       mail "$(_de_port_owner 2525)" \
-                       mysql "$(_de_port_owner 3306)"
-  printf '  %-8s %s\n' dns  "$(grep -q '^port 53535' $_DE_RESOLVER 2>/dev/null && print Flock || print Herd) ($_DE_RESOLVER)"
-  printf '  %-8s %s\n' php  "$(whence -p php)"
-  printf '  %-8s %s\n' ''   "$(php -r 'echo PHP_VERSION;' 2>/dev/null)"
-  printf '  %-8s %s\n' composer "$(whence -p composer)"
-  printf '  %-8s %s\n' sites "$DEVENV_SITES$([[ -d $DEVENV_SITES ]] || print '  (NOT MOUNTED)')"
+  local stack=${(C)active} db bin
+  case $active in
+    herd)  db=DBngin; bin=$_DE_HERD_BIN ;;
+    flock) db=Flock;  bin=$_DE_FLOCK_BIN ;;
+  esac
+
+  local web=$(_de_port_owner 80) mail=$(_de_port_owner 2525) mysql=$(_de_port_owner 3306)
+  local dns=none
+  [[ -f $_DE_RESOLVER ]] && { grep -q '^port 53535' $_DE_RESOLVER && dns=Flock || dns=Herd; }
+  local php=$(whence -p php) composer=$(whence -p composer)
+  local ver=$(php -r 'echo PHP_VERSION;' 2>/dev/null)
+  local -a fixes
+
+  _de_p "%B⇄  Active stack:%b ${stack:-none set}"
+
+  local s
+  s=$(_de_owned "$web" "$stack");   _de_row '◎' web   $s "$(_de_q "$web")"   ':80'
+  [[ $s == ok ]] || fixes+=("web on :80 isn't served by ${stack:-a stack} — run php-dev ${active:-toggle}")
+  s=$(_de_owned "$mail" "$stack");  _de_row '✉' mail  $s "$(_de_q "$mail")"  ':2525'
+  s=$(_de_owned "$mysql" "$db");    _de_row '▤' mysql $s "$(_de_q "$mysql")" ':3306'
+  [[ $s == ok || -z $active ]] || fixes+=("MySQL on :3306 isn't $db — run php-dev mysql ${active/herd/dbngin}")
+  s=$(_de_owned "$dns" "$stack");   _de_row '⌖' dns   $s "$dns" "$(_de_q "$_DE_RESOLVER")"
+  [[ $s == ok ]] || fixes+=(".test DNS points at $dns — run php-dev ${active:-toggle} to fix")
+
+  [[ -n $bin && ${php:h} == $bin ]] && s=ok || s=warn
+  [[ -z $php ]] && s=bad
+  _de_row '◆' php      $s "${ver:-not found}" "$(_de_q "$php")"
+  [[ -n $bin && ${composer:h} == $bin ]] && s=ok || s=warn
+  [[ -z $composer ]] && s=bad
+  _de_row '◈' composer $s "$(_de_q "${composer:-not found}")"
+
+  if [[ -d $DEVENV_SITES ]]; then
+    _de_row '⌂' sites ok "$(_de_q "$DEVENV_SITES")"
+  else
+    _de_row '⌂' sites bad "$(_de_q "$DEVENV_SITES")" 'not mounted'
+  fi
+
+  if (( $#fixes )); then
+    print
+    for s in $fixes; do _de_p "%F{yellow}!%f $(_de_q "$s")"; done
+  fi
 }
 
 # Kept from the old MySQL switcher: report who owns :3306
-mysql-status() { print "MySQL :3306 → $(_de_port_owner 3306)"; }
+mysql-status() {
+  local owner=$(_de_port_owner 3306)
+  _de_row '▤' mysql "$(_de_owned "$owner" "${owner%% *}")" "$(_de_q "$owner")" ':3306'
+}
 
 # ── main command ─────────────────────────────────────────────────────────────
 
