@@ -28,14 +28,14 @@ $label = match ($activeStack) {
 };
 
 $action = select("php-dev · Active stack: $label", [
-    'status' => 'Show stack status',
-    'stack' => 'Switch the PHP stack',
-    'mysql' => 'Manage MySQL',
-    'serve' => 'Serve the current Laravel project',
-    'tinker' => 'Open Laravel Tinker',
-    'test' => 'Run Laravel tests',
-    'dev' => 'Run composer dev',
-    'exit' => 'Exit',
+    'status' => '≡  Show stack status',
+    'stack' => '⇄  Switch the PHP stack',
+    'mysql' => '▤  Manage MySQL',
+    'serve' => '▶  Serve the current Laravel project',
+    'tinker' => '›_ Open Laravel Tinker',
+    'test' => '✓  Run Laravel tests',
+    'dev' => '↗  Run composer dev',
+    'exit' => '×  Exit',
 ]);
 
 $arguments = [$action];
@@ -59,9 +59,9 @@ switch ($action) {
 
     case 'mysql':
         $mysql = select('MySQL action', [
-            'status' => 'Show MySQL status',
-            'dbngin' => 'Switch to DBngin MySQL',
-            'flock' => 'Switch to Flock MySQL',
+            'status' => '≡  Show MySQL status',
+            'dbngin' => '⇄  Switch to DBngin MySQL',
+            'flock' => '⇄  Switch to Flock MySQL',
         ]);
 
         if ($mysql !== 'status' && !confirm('Switch the local MySQL service?', default: false)) {

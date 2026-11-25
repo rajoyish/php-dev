@@ -51,11 +51,11 @@ case $subcommand in
   menu)
     (( $# == 0 )) || usage_error "'menu' takes no arguments"
     [[ -t 0 && -t 1 && ${TERM:-dumb} != dumb ]] || usage_error 'menu needs an interactive terminal'
-    exec php "$repo_root/src/menu.php"
+    exec "${PHP_DEV_RUNTIME_PHP:-php}" "$repo_root/src/menu.php"
     ;;
   install)
     (( $# == 0 )) || usage_error "'install' takes no arguments"
-    exec php "$repo_root/src/install-zsh.php"
+    exec "${PHP_DEV_RUNTIME_PHP:-php}" "$repo_root/src/install-zsh.php"
     ;;
   status|herd|flock|toggle)
     (( $# == 0 )) || usage_error "'$subcommand' takes no arguments"

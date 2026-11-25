@@ -225,6 +225,14 @@ devenv() {
     *) print "usage: devenv [herd|flock|toggle|status]"; return 1 ;;
   esac
 
+  if [[ $target == herd && ( ! -d $_DE_HERD_APP || ! -x $_DE_HERD_CLI ) ]]; then
+    _de_err 'Install and open Laravel Herd before switching to it.'
+    return 1
+  elif [[ $target == flock && ( ! -d $_DE_FLOCK_APP || ! -x $_DE_FLOCK_CLI ) ]]; then
+    _de_err 'Install and open Flock before switching to it.'
+    return 1
+  fi
+
   [[ -d $DEVENV_SITES ]] || _de_warn "$DEVENV_SITES isn't available — is the eSSD mounted?"
 
   print -P "%B⇄ Switching to ${target:u}%b"

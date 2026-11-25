@@ -48,14 +48,13 @@ function installZsh(): string
         throw new RuntimeException("Unbalanced php-dev markers in $zshrc.");
     }
 
-    $init = dirname(__DIR__) . '/shell/init.zsh';
-    if (str_contains($init, "\n") || str_contains($init, "\r")) {
-        throw new RuntimeException('The checkout path contains a line break.');
-    }
-    $quotedInit = "'" . str_replace("'", "'\\''", $init) . "'";
+    $brewPrefix = getenv('PHP_DEV_BREW_PREFIX');
+    $root = $brewPrefix ? $brewPrefix . '/libexec' : dirname(__DIR__);
+    $init = quoteZshPath($root . '/shell/init.zsh');
+    $bin = quoteZshPath(($brewPrefix ?: $root) . '/bin');
     $contents = rtrim(implode("\n", $remaining), "\r\n");
     $updated = ($contents === '' ? '' : "$contents\n\n")
-        . "$start\n[[ -r $quotedInit ]] && source $quotedInit\n$end\n";
+        . "$start\nif [[ -r $init ]]; then\n  source $init $bin\nfi\n$end\n";
 
     if ($updated === $original) {
         return "Zsh is already configured in $zshrc.";
@@ -93,6 +92,15 @@ function installZsh(): string
     }
 
     return "Configured php-dev in $zshrc. Open a new Zsh session to use it.";
+}
+
+function quoteZshPath(string $path): string
+{
+    if (str_contains($path, "\n") || str_contains($path, "\r")) {
+        throw new RuntimeException('The installation path contains a line break.');
+    }
+
+    return "'" . str_replace("'", "'\\''", $path) . "'";
 }
 
 try {
