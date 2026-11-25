@@ -18,17 +18,56 @@ A macOS CLI and interactive menu for local PHP and Laravel development. It switc
 
 ## Install with Homebrew
 
-Once the repository and its first release are published, run:
+This is the recommended way to install php-dev. The repository is its own Homebrew tap.
+
+**1. Tap the repository and install php-dev:**
 
 ```sh
 brew tap rajoyish/php-dev https://github.com/rajoyish/php-dev.git
 brew install rajoyish/php-dev/php-dev
+```
+
+Homebrew installs `php-dev` and `phpd`, Zsh completion, and the PHP and Composer that php-dev itself runs on.
+
+**2. Configure Zsh:**
+
+```sh
 "$(brew --prefix php-dev)/bin/php-dev" install
 ```
 
-Open a new terminal and run `php-dev` or `phpd`. Homebrew installs both commands, PHP, Composer, and Zsh completion. Install and open [Herd](https://herd.laravel.com/) or Flock separately to manage its local services. For the Herd stack’s MySQL, install [DBngin](https://dbngin.com/) and create a MySQL instance first.
+This adds one managed block to your Zsh startup file, after the Herd and Flock PATH settings. The block points at `$(brew --prefix)/opt/php-dev`, so it keeps working after upgrades.
 
-The last command adds one managed block to your Zsh startup file, after the Herd and Flock PATH settings. It also migrates an existing checkout-based setup to the Homebrew installation and keeps your saved stack. The block follows Homebrew upgrades. To uninstall, run `brew uninstall php-dev` and remove the lines between `# >>> php-dev >>>` and `# <<< php-dev <<<` in your Zsh startup file.
+**3. Open a new terminal and check the install:**
+
+```sh
+which -a php-dev phpd   # both should be under $(brew --prefix)/opt/php-dev/bin
+php-dev doctor          # checks the apps, Zsh setup and stack
+php-dev                 # opens the menu
+```
+
+Install and open [Herd](https://herd.laravel.com/) or Flock separately to manage its local services. For the Herd stack’s MySQL, install [DBngin](https://dbngin.com/) and create a MySQL instance first.
+
+### Upgrade
+
+```sh
+brew update
+brew upgrade php-dev
+```
+
+Open terminals pick up the new version in a new tab, or after `exec zsh`.
+
+### Switch from a checkout
+
+If you already run php-dev from a clone, steps 1 and 2 above switch you over. The installer replaces the block that pointed at your checkout. Your saved stack and icon style stay in `~/.config/devenv/`. After that, edits in the clone no longer affect the installed command. To go back, run `bin/php-dev install` from the clone.
+
+### Uninstall
+
+```sh
+brew uninstall php-dev
+brew untap rajoyish/php-dev
+```
+
+Then remove the lines between `# >>> php-dev >>>` and `# <<< php-dev <<<` in your Zsh startup file. To also remove your saved settings, delete `~/.config/devenv/`.
 
 ## Install from a checkout
 
@@ -188,6 +227,26 @@ Run the tests with `zsh tests/run.zsh`. They fake ports and apps, so they don’
 
 ## Release through Homebrew
 
-This repository is also the tap. The formula installs the `v0.1.0` Git tag, uses `composer.lock` to install Laravel Prompts, and links `phpd` next to `php-dev`. To release, push the tag for the commit that contains the formula. For later releases, update the formula’s tag and version together. Check the published package with `brew test rajoyish/php-dev/php-dev`.
+This repository is also the tap. The formula installs a Git tag, uses `composer.lock` to install Laravel Prompts, and links `phpd` next to `php-dev`. The current release is `v0.1.0`.
+
+To publish a new release, for example `0.1.1`:
+
+1. Commit and push your changes, and check that CI passes.
+2. In `Formula/php-dev.rb`, set the `url` tag to `v0.1.1` and `version` to `0.1.1`. Commit and push.
+3. Tag that commit and push the tag:
+
+   ```sh
+   git tag -a v0.1.1 -m "php-dev 0.1.1"
+   git push origin v0.1.1
+   ```
+
+4. Upgrade and test the installed package:
+
+   ```sh
+   brew update && brew upgrade php-dev
+   brew test rajoyish/php-dev/php-dev
+   ```
+
+Users get the release from `brew upgrade php-dev`. Check the formula with `brew style Formula/php-dev.rb` before pushing; CI runs the same check.
 
 [Homebrew tap documentation](https://docs.brew.sh/How-to-Create-and-Maintain-a-Tap)
