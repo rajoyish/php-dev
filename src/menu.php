@@ -2,6 +2,11 @@
 
 declare(strict_types=1);
 
+// Newer PHP releases deprecate calls that dependencies still make (Laravel Prompts
+// 0.3.28 on PHP 8.6). They work, so keep the notices out of the menu. This applies
+// only to php-dev's own process, not to project PHP.
+error_reporting(E_ALL & ~E_DEPRECATED);
+
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\text;
 

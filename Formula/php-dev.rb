@@ -1,8 +1,8 @@
 class PhpDev < Formula
   desc "Switch local PHP stacks and run Laravel project commands"
   homepage "https://github.com/rajoyish/php-dev"
-  url "https://github.com/rajoyish/php-dev.git", tag: "v0.1.0"
-  version "0.1.0"
+  url "https://github.com/rajoyish/php-dev.git", tag: "v0.1.1"
+  version "0.1.1"
 
   depends_on "composer"
   depends_on :macos

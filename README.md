@@ -227,7 +227,7 @@ Run the tests with `zsh tests/run.zsh`. They fake ports and apps, so they don’
 
 ## Release through Homebrew
 
-This repository is also the tap. The formula installs a Git tag, uses `composer.lock` to install Laravel Prompts, and links `phpd` next to `php-dev`. The current release is `v0.1.0`.
+This repository is also the tap. The formula installs a Git tag, uses `composer.lock` to install Laravel Prompts, and links `phpd` next to `php-dev`. The current release is `v0.1.1`.
 
 To publish a new release, for example `0.1.1`:
 
